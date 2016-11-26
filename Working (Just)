@@ -10,7 +10,7 @@ function onOpen(){
 //Then turn that document into a PDF
 
 // Row number from where to fill in the data (starts as 1 = first row)
-var CUSTOMER_ID = 6;
+var CUSTOMER_ID = 2;
 
 // Google Doc id from the document template
 // (Get ids from the URL)

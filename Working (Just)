@@ -1,0 +1,163 @@
+//Code to use Data from Spreadsheet to create CofCs for each of the rows.
+//The SOURCE_TEMPLATE will depend on the name of the customer, Company X uses a different CofC from Company Y and Another Company, etc.
+
+function onOpen(){
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ss.addMenu("Generate files", [{name: "Generate", functionName: "generateCustomerContract"}, {name: "Loop generate", functionName: "loopGenerateContract"}]);
+}
+
+//I'd like the code to choose the certificate template, then use it to create a new document using the necessary information about the order.
+//Then turn that document into a PDF
+
+// Row number from where to fill in the data (starts as 1 = first row)
+var CUSTOMER_ID = 6;
+
+// Google Doc id from the document template
+// (Get ids from the URL)
+// List of all templates that may be used.
+// In this case, the ids of Customer X's Template, Customer Y's Template, and Another Customer's Template are used.
+var SOURCE_TEMPLATES = ["17nLuLuDCw0QYiAWljS7l6y_LXGQ4Zw5nPMQp9EqW7hA",//Flextronics
+                       "1GKONReiX_wTZKrqGOPK9sFb2Z-ah7abP139tC3KHALM",//Plexus
+                       "1s5gYYkma-k80uTIYJEqGcbR9ITelfI6vlfnOjytIlqY"];//Sanmina
+
+// In which spreadsheet we have all the customer data
+var CUSTOMER_SPREADSHEET = "1igaJLgAIKgFPql6iEQ4Cbrjiyf5qEgdPJ_aJFjdZdtk";
+
+// In which Google Drive we toss the target documents
+var TARGET_FOLDER = "0B7Vb7iTMFmweckU4NE9FaGZTdFU";
+
+/**
+* Return spreadsheet row content as JS array.
+*
+* Note: We assume the row ends when we encounter
+* the first empty cell. This might not be 
+* sometimes the desired behavior.
+*
+* Rows start at 1, not zero based!!! 🙁
+*
+*/
+function getRowAsArray(sheet, row) {
+  var dataRange = sheet.getRange(row, 1, 1, 99);
+  var data = dataRange.getValues();
+  var columns = [];
+  
+  for (i in data) {
+    var row = data[i];
+    
+    Logger.log("Got row", row);
+    
+    for(var l=0; l<99; l++) {
+      var col = row[l];
+      // First empty column interrupts
+      if(!col) {
+        break;
+      }
+      
+      columns.push(col);
+    }
+  }
+  
+  return columns;
+}
+
+//Return ID of template document
+function getSourceTemplate(templateName){
+  //Title of document to search for
+  var docName = templateName + "'s Template";
+  
+  for(var i=0;i<SOURCE_TEMPLATES.length;i++){
+    if (docName===DocumentApp.openById(SOURCE_TEMPLATES[i]).getName()){
+      return SOURCE_TEMPLATES[i];
+    }
+  }
+  //Return empty string if no suitable doc is found
+  return "";
+}
+
+/**
+* Duplicates a Google Apps doc
+*
+* @return id of a new document with a given name from the orignal
+*/
+
+//Alternative piece of code from original to replace DocsList
+function createDuplicateDocument(sourceId, name) {
+  //var source = DocsList.getFileById(sourceId);
+  var source = DriveApp.getFileById(sourceId);
+  
+  return source.makeCopy(name).getId();
+};
+//End of Section copied from website for DocsList
+
+/**
+* Script entry point
+*/
+function generateCustomerContract() {
+  
+  var ss = SpreadsheetApp.openById(CUSTOMER_SPREADSHEET);
+  
+  // Fetch variable names
+  // they are column names in the spreadsheet
+  var sheet = ss.getActiveSheet();
+  
+  var dataRange = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getValues();
+  
+  var headings = dataRange[0];
+  Logger.log("Processing columns:" + headings);
+  
+  var customerData = dataRange[CUSTOMER_ID-1];
+  Logger.log("Processing data:" + customerData);
+  
+  // Assume first column holds the name of the customer
+  var customerName = customerData[0];
+  
+  // Assume customer's name indicate which template to use
+  var SOURCE_TEMPLATE = getSourceTemplate(customerName);
+  
+  // End script if no source template is found
+  if(SOURCE_TEMPLATE===""){
+    Logger.log("No source template");
+    return;
+  }
+  
+  // Name of new files
+  var newFileName = "CofC - WO " + customerData[headings.indexOf("WO")];
+  
+  var target = DocumentApp.openById(createDuplicateDocument(SOURCE_TEMPLATE, newFileName));
+  
+  Logger.log("Created new document:" + target.getId());
+
+  var text = target.getBody().editAsText();
+  
+  for(var i=0; i<headings.length; i++) {
+    var key = "\<" + headings[i] + "\>";
+    var value = customerData[i];
+    
+    text.replaceText(key, value);
+  }
+  
+  //save and close doc so that pdf will be updated
+  target.saveAndClose()
+  
+  //Place new pdf document in folder
+  var targetFolder = DriveApp.getFolderById(TARGET_FOLDER);
+  var targetId = target.getId();
+  var docblob = DocumentApp.openById(targetId).getAs('application/pdf');
+  
+  targetFolder.createFile(docblob);
+  
+}
+
+//loops through generate contract
+function loopGenerateContract(){
+  //row that the program will start from looping from
+  var startRow = CUSTOMER_ID;
+  //row that the program ends on. It is the last row in the spreadsheet by default
+  var endRow = SpreadsheetApp.openById(CUSTOMER_SPREADSHEET).getActiveSheet().getLastRow();
+  
+  //loop through generate customer contract
+  for(i=startRow;i<=endRow;i++){
+    generateCustomerContract();
+    CUSTOMER_ID++;
+  }
+}
